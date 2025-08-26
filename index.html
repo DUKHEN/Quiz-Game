@@ -96,6 +96,8 @@ function clearTimers() {
 function renderWord() {
   if (wordIndex >= words.length) {
     clearInterval(readingTimer); readingTimer=null;
+    // hide passage box when finished
+    displayBox.classList.add('hidden');
     startQuizPhase();
     return;
   }
@@ -107,6 +109,7 @@ function startReadingPhase() {
   words = p.text.trim().split(/\s+/);
   wordIndex = 0;
   displayBox.textContent = "";
+  displayBox.classList.remove('hidden'); // show passage while reading
   quizBox.classList.add('hidden');
   progressFill.style.width = "0%";
   readingTimer = setInterval(renderWord, WORD_INTERVAL_MS);
