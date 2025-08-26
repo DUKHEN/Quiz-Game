@@ -3,254 +3,154 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Reading Flow – 120 WPM + Timed MCQs</title>
+<title>RSVP Quiz – 120 WPM</title>
 <style>
   :root { --border:#e5e7eb; --bg:#f8fafc; --text:#0f172a; --muted:#64748b; --primary:#2563eb; }
-  * { box-sizing: border-box; }
-  body { font: 16px/1.55 system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; background:#fff; color:var(--text); margin: 0; }
-  .wrap { max-width: 920px; margin: 24px auto; padding: 20px; }
-  .card { border:1px solid var(--border); border-radius: 12px; padding: 20px; }
-  h1 { font-size: 1.35rem; margin: 0 0 10px; }
-  .muted { color: var(--muted); }
-  .area { min-height: 160px; background: var(--bg); border-radius: 10px; padding: 16px; }
-  .row { display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
-  .controls { display:flex; gap:8px; margin-top: 12px; }
-  button { padding: 8px 14px; border: 0; border-radius: 8px; cursor: pointer; background: var(--primary); color: #fff; }
-  button.ghost { background:#e5e7eb; color:#111; }
-  fieldset { margin: 0; border:1px dashed var(--border); border-radius: 10px; padding: 14px; }
-  legend { padding: 0 6px; }
-  label { display:block; padding: 6px 0; }
+  * { box-sizing:border-box; }
+  body { font:16px/1.5 system-ui, Arial, sans-serif; background:#fff; color:var(--text); margin:0; }
+  .wrap { max-width:800px; margin:30px auto; padding:20px; }
+  .card { border:1px solid var(--border); border-radius:12px; padding:24px; }
+  h1 { font-size:1.4rem; margin:0 0 12px; }
+  .muted { color:var(--muted); }
+  .display { font-size:2rem; text-align:center; min-height:100px; display:flex; align-items:center; justify-content:center; background:var(--bg); border-radius:10px; margin-bottom:20px; }
+  fieldset { border:1px dashed var(--border); border-radius:10px; padding:14px; margin:0; }
+  legend { padding:0 6px; font-weight:bold; }
+  label { display:block; padding:6px 0; }
   .hidden { display:none; }
-  .bar { height: 6px; background:#e5e7eb; border-radius:999px; overflow:hidden; }
+  .bar { height:6px; background:#e5e7eb; border-radius:999px; overflow:hidden; margin-top:12px; }
   .bar > i { display:block; height:100%; width:0%; background:var(--primary); transition:width 0.2s linear; }
-  .pill { display:inline-flex; align-items:center; gap:6px; padding:4px 10px; border-radius:999px; background:#eef2ff; color:#3730a3; font-weight:600; font-size:12px; }
-  .stack { display:flex; flex-direction:column; gap:12px; }
+  .controls { margin-top:20px; }
+  button { padding:8px 14px; border:0; border-radius:8px; cursor:pointer; background:var(--primary); color:#fff; font-weight:600; }
 </style>
 </head>
 <body>
-  <div class="wrap">
-    <div class="card stack">
-      <div class="row" style="justify-content:space-between;">
-        <h1>Reading Flow Demo</h1>
-        <span class="pill"><span id="phaseLabel">Idle</span></span>
-      </div>
-      <p class="muted">Shows each passage at <strong>120 WPM</strong> (word-by-word), then reveals <strong>3 MCQs</strong> for <strong>15s</strong> each, then moves to the next passage.</p>
+<div class="wrap">
+  <div class="card">
+    <h1>Reading Quiz (RSVP)</h1>
+    <p class="muted">Each passage is shown word-by-word at <b>120 WPM</b>. Then 3 MCQs appear one-by-one for <b>15s</b> each.</p>
 
-      <div class="area" id="displayBox"></div>
-      <div class="bar"><i id="progressFill"></i></div>
+    <div class="display" id="displayBox"></div>
+    <div class="bar"><i id="progressFill"></i></div>
 
-      <div class="controls">
-        <button id="startBtn">Start</button>
-        <button class="ghost" id="resetBtn">Reset</button>
-      </div>
+    <div id="quizBox" class="hidden">
+      <fieldset>
+        <legend id="qLegend">Question</legend>
+        <div id="qOptions"></div>
+        <p class="muted" id="qTimer">Time left: 15s</p>
+      </fieldset>
+    </div>
 
-      <div id="quizBox" class="hidden">
-        <fieldset>
-          <legend id="qLegend">Question</legend>
-          <div id="qOptions"></div>
-          <p class="muted" id="qTimer">Time left: 15s</p>
-        </fieldset>
-      </div>
-
-      <p class="muted" id="statusLine"></p>
+    <div class="controls">
+      <button id="startBtn">Start</button>
     </div>
   </div>
+</div>
 
 <script>
-/** -------- CONFIG -------- */
-const WPM = 120;                       // words per minute
+/** CONFIG */
+const WPM = 120;
 const WORD_INTERVAL_MS = Math.round(60000 / WPM); // 500ms
-const QUESTION_DURATION_MS = 15000;    // 15 seconds per question
-const AUTO_LOOP = true;                // loop through passages
+const QUESTION_DURATION_MS = 15000; // 15s
 
-/** -------- DUMMY DATA -------- */
+/** DATA */
 const PASSAGES = [
   {
-    title: "Dummy Passage A",
-    text: "Before sunrise the team reviews their checklist and prepares a simple route plan. Each driver confirms tire pressure tools and radio batteries. The coordinator updates the schedule and notes a brief detour around the busy downtown roads. By spacing the heaviest boxes near the door they reduce unloading time. When the first checkpoint opens the group starts calmly and keeps steady progress without rushing.",
+    title: "Passage A",
+    text: "Before sunrise the team prepares their route carefully. Each driver checks fuel and tires while the coordinator confirms the delivery window. By organizing boxes and agreeing on alternate routes they avoid delays and improve efficiency.",
     questions: [
-      {
-        text: "What is the main activity described?",
-        options: [
-          "Preparing and organizing a delivery plan.",
-          "Fixing a flat tire on the highway.",
-          "Training new drivers for a race."
-        ]
-      },
-      {
-        text: "Why place heavy boxes near the door?",
-        options: [
-          "To make unloading faster.",
-          "To protect fragile items.",
-          "To balance fuel usage."
-        ]
-      },
-      {
-        text: "How do they handle downtown congestion?",
-        options: [
-          "They plan a brief detour.",
-          "They cancel the route.",
-          "They wait until evening."
-        ]
-      }
+      { text:"What is the team doing?", options:["Preparing a route","Eating breakfast","Repairing engines"] },
+      { text:"Why check fuel and tires?", options:["Ensure safety","Decorate truck","Save money"] },
+      { text:"How do they avoid delays?", options:["Alternate routes","Cancel job","Ignore schedules"] }
     ]
   },
   {
-    title: "Dummy Passage B",
-    text: "After lunch the group checks weather alerts and confirms phone contact for all teams. A backup document folder contains printed permits in case the app fails. The radio lead schedules quick status calls every hour to maintain awareness. With clear roles assigned everyone moves in sequence and avoids duplication of work while keeping energy focused.",
+    title: "Passage B",
+    text: "In the afternoon volunteers guide students through the campus. They highlight offices study areas and the clinic. A group chat helps latecomers rejoin the tour and the walk ends at the library.",
     questions: [
-      {
-        text: "Why keep printed permits?",
-        options: [
-          "To continue if the app fails.",
-          "To decorate the dashboard.",
-          "To avoid carrying ID cards."
-        ]
-      },
-      {
-        text: "What keeps the team aligned?",
-        options: [
-          "Hourly status calls on radio.",
-          "Skipping all check-ins.",
-          "Random role switching."
-        ]
-      },
-      {
-        text: "What is assigned clearly?",
-        options: [
-          "Team roles.",
-          "Parking tickets.",
-          "Lunch coupons."
-        ]
-      }
+      { text:"Who guides the students?", options:["Volunteers","Drivers","Teachers only"] },
+      { text:"Where does the walk end?", options:["At the library","At the cafeteria","At the parking lot"] },
+      { text:"What helps latecomers?", options:["A group chat","Printed maps","Announcements"] }
     ]
   }
 ];
 
-/** -------- STATE -------- */
-let passageIndex = 0;
-let wordIndex = 0;
-let words = [];
-let readingTimer = null;
-let quizTimer = null;
-let quizRemaining = QUESTION_DURATION_MS;
+/** STATE */
+let passageIndex = 0, wordIndex = 0, words = [];
+let readingTimer = null, quizTimer = null, quizRemaining = QUESTION_DURATION_MS;
 let currentQuestionIndex = 0;
 
-/** -------- EL REFS -------- */
+/** EL REFS */
 const displayBox = document.getElementById('displayBox');
-const phaseLabel = document.getElementById('phaseLabel');
 const progressFill = document.getElementById('progressFill');
 const startBtn = document.getElementById('startBtn');
-const resetBtn = document.getElementById('resetBtn');
 const quizBox = document.getElementById('quizBox');
 const qLegend = document.getElementById('qLegend');
 const qOptions = document.getElementById('qOptions');
 const qTimer = document.getElementById('qTimer');
-const statusLine = document.getElementById('statusLine');
 
-/** -------- HELPERS -------- */
-function setPhase(text) { phaseLabel.textContent = text; }
+/** HELPERS */
 function clearTimers() {
-  if (readingTimer) { clearInterval(readingTimer); readingTimer = null; }
-  if (quizTimer) { clearInterval(quizTimer); quizTimer = null; }
-}
-function resetUI() {
-  clearTimers();
-  displayBox.textContent = "";
-  quizBox.classList.add('hidden');
-  qOptions.innerHTML = "";
-  qLegend.textContent = "Question";
-  qTimer.textContent = "Time left: 15s";
-  progressFill.style.width = "0%";
-  statusLine.textContent = "";
-  setPhase("Idle");
-}
-function nextPassageIndex() {
-  if (AUTO_LOOP) return (passageIndex + 1) % PASSAGES.length;
-  return Math.min(passageIndex + 1, PASSAGES.length - 1);
+  if (readingTimer) { clearInterval(readingTimer); readingTimer=null; }
+  if (quizTimer) { clearInterval(quizTimer); quizTimer=null; }
 }
 function renderWord() {
   if (wordIndex >= words.length) {
-    clearInterval(readingTimer);
-    readingTimer = null;
-    progressFill.style.width = "100%";
+    clearInterval(readingTimer); readingTimer=null;
     startQuizPhase();
     return;
   }
-  const word = words[wordIndex++];
-  displayBox.textContent += (wordIndex === 1 ? "" : " ") + word;
-  progressFill.style.width = `${Math.min(100, Math.round((wordIndex / words.length) * 100))}%`;
+  displayBox.textContent = words[wordIndex++];
+  progressFill.style.width = `${Math.round((wordIndex/words.length)*100)}%`;
 }
 function startReadingPhase() {
   const p = PASSAGES[passageIndex];
-  setPhase("Reading");
-  statusLine.textContent = `${p.title} • ${WPM} WPM`;
-  displayBox.textContent = "";
   words = p.text.trim().split(/\s+/);
   wordIndex = 0;
+  displayBox.textContent = "";
   quizBox.classList.add('hidden');
+  progressFill.style.width = "0%";
   readingTimer = setInterval(renderWord, WORD_INTERVAL_MS);
+}
+function showQuestion(q) {
+  qLegend.textContent = `Q${currentQuestionIndex+1}. ${q.text}`;
+  qOptions.innerHTML = q.options.map(opt=>`<label><input type="radio" name="q${currentQuestionIndex}" value="${opt}"> ${opt}</label>`).join("");
+  quizRemaining = QUESTION_DURATION_MS;
+  updateQuizTimer();
+}
+function updateQuizTimer() {
+  qTimer.textContent = `Time left: ${Math.ceil(quizRemaining/1000)}s`;
+  progressFill.style.width = `${100 - Math.round((quizRemaining/QUESTION_DURATION_MS)*100)}%`;
 }
 function startQuizPhase() {
   const p = PASSAGES[passageIndex];
-  setPhase("MCQ");
-  quizBox.classList.remove('hidden');
-  displayBox.textContent = ""; // hide passage while quizzing
-  progressFill.style.width = "0%";
   currentQuestionIndex = 0;
+  quizBox.classList.remove('hidden');
   showQuestion(p.questions[currentQuestionIndex]);
-  startQuestionTimer();
-}
-function showQuestion(q) {
-  qLegend.textContent = `Q${currentQuestionIndex + 1}. ${q.text}`;
-  qOptions.innerHTML = q.options.map((opt, i) => `
-    <label><input type="radio" name="q${currentQuestionIndex}" value="${opt.replace(/"/g,'&quot;')}"> ${opt}</label>
-  `).join("");
-  quizRemaining = QUESTION_DURATION_MS;
-  updateQuestionTimer();
-}
-function updateQuestionTimer() {
-  const secs = Math.ceil(quizRemaining / 1000);
-  qTimer.textContent = `Time left: ${secs}s`;
-  const pct = Math.max(0, Math.min(100, Math.round((1 - (quizRemaining / QUESTION_DURATION_MS)) * 100)));
-  progressFill.style.width = `${pct}%`;
-}
-function startQuestionTimer() {
-  if (quizTimer) clearInterval(quizTimer);
-  quizTimer = setInterval(() => {
-    quizRemaining -= 200; // smooth countdown
-    if (quizRemaining <= 0) {
-      // move to next question or next passage
-      clearInterval(quizTimer);
-      quizTimer = null;
-      const p = PASSAGES[passageIndex];
-      if (currentQuestionIndex < p.questions.length - 1) {
+  quizTimer = setInterval(()=>{
+    quizRemaining -= 1000;
+    if (quizRemaining<=0) {
+      clearInterval(quizTimer); quizTimer=null;
+      if (currentQuestionIndex < p.questions.length-1) {
         currentQuestionIndex++;
         showQuestion(p.questions[currentQuestionIndex]);
-        startQuestionTimer();
+        startQuizPhase(); // restart timer loop
       } else {
-        // MCQ done -> next passage
-        passageIndex = nextPassageIndex();
+        // next passage
+        passageIndex = (passageIndex+1) % PASSAGES.length;
         startReadingPhase();
       }
     } else {
-      updateQuestionTimer();
+      updateQuizTimer();
     }
-  }, 200);
+  },1000);
 }
 
-/** -------- EVENTS -------- */
-startBtn.addEventListener('click', () => {
+/** EVENTS */
+startBtn.addEventListener('click',()=>{
   clearTimers();
+  passageIndex=0;
   startReadingPhase();
 });
-resetBtn.addEventListener('click', () => {
-  passageIndex = 0;
-  resetUI();
-});
-
-/** -------- INIT -------- */
-resetUI();
 </script>
 </body>
 </html>
