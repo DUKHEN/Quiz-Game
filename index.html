@@ -1,389 +1,256 @@
-# Create a new multi-passage version (5 passages × 3 questions each) wired to the user's known Google Form IDs.
-from zipfile import ZipFile, ZIP_DEFLATED
-from pathlib import Path
-
-root = Path("/mnt/data/reading-quiz-5x3-static")
-root.mkdir(parents=True, exist_ok=True)
-
-index_html = """<!doctype html>
+<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Reading Quiz – 5 Passages × 3 Questions (Static → Google Forms)</title>
+<title>Reading Flow – 120 WPM + Timed MCQs</title>
 <style>
-  :root { --border:#e5e7eb; --bg:#f8fafc; --primary:#1a73e8; }
+  :root { --border:#e5e7eb; --bg:#f8fafc; --text:#0f172a; --muted:#64748b; --primary:#2563eb; }
   * { box-sizing: border-box; }
-  body { font: 16px/1.45 system-ui, Arial, sans-serif; margin: 24px; background:#fff; color:#111; }
-  .card { max-width: 880px; margin: 0 auto; padding: 20px; border: 1px solid var(--border); border-radius: 12px; }
+  body { font: 16px/1.55 system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; background:#fff; color:var(--text); margin: 0; }
+  .wrap { max-width: 920px; margin: 24px auto; padding: 20px; }
+  .card { border:1px solid var(--border); border-radius: 12px; padding: 20px; }
+  h1 { font-size: 1.35rem; margin: 0 0 10px; }
+  .muted { color: var(--muted); }
+  .area { min-height: 160px; background: var(--bg); border-radius: 10px; padding: 16px; }
   .row { display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
-  .passage { min-height: 140px; padding: 16px; background: var(--bg); border-radius: 8px; }
-  .controls { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
-  button { padding: 8px 14px; border: 0; border-radius: 8px; cursor: pointer; }
-  .primary { background: var(--primary); color: #fff; }
-  .ghost { background: #e5e7eb; }
-  .hidden { display: none; }
-  .q { margin: 16px 0; }
-  label { display:block; margin: 6px 0; }
-  small.muted { color:#6b7280; }
-  select, input[type="text"] { padding:8px 10px; border:1px solid var(--border); border-radius:8px; width:100%; max-width:420px; }
-  .meta { display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
-  .muted { color:#6b7280; }
+  .controls { display:flex; gap:8px; margin-top: 12px; }
+  button { padding: 8px 14px; border: 0; border-radius: 8px; cursor: pointer; background: var(--primary); color: #fff; }
+  button.ghost { background:#e5e7eb; color:#111; }
+  fieldset { margin: 0; border:1px dashed var(--border); border-radius: 10px; padding: 14px; }
+  legend { padding: 0 6px; }
+  label { display:block; padding: 6px 0; }
+  .hidden { display:none; }
+  .bar { height: 6px; background:#e5e7eb; border-radius:999px; overflow:hidden; }
+  .bar > i { display:block; height:100%; width:0%; background:var(--primary); transition:width 0.2s linear; }
+  .pill { display:inline-flex; align-items:center; gap:6px; padding:4px 10px; border-radius:999px; background:#eef2ff; color:#3730a3; font-weight:600; font-size:12px; }
+  .stack { display:flex; flex-direction:column; gap:12px; }
 </style>
 </head>
 <body>
-<div class="card">
-  <h1>Reading Quiz</h1>
-  <p class="muted"><small>Choose a passage, reveal it word-by-word, answer 3 questions, then submit to Google Forms. Works on GitHub Pages (no backend).</small></p>
-
-  <!-- Google Form POST (static) -->
-  <form id="gform"
-        action="https://docs.google.com/forms/d/e/1FAIpQLSeXCehLwgo4nSHty_IQEPay9UUZ-nMBZ_TDIFP-CTTLJLgibw/formResponse"
-        method="POST"
-        target="hidden_iframe">
-
-    <!-- Student Name (REQUIRED) -->
-    <div class="q">
-      <label>Student Name
-        <input type="text" name="entry.257251326" required>
-      </label>
-    </div>
-
-    <!-- Passage Picker -->
-    <div class="q">
-      <div class="meta">
-        <label for="passagePicker"><strong>Passage</strong></label>
-        <select id="passagePicker" aria-label="Passage">
-          <option value="0">1) Pre-dawn Delivery Prep (Davao → Surigao)</option>
-          <option value="1">2) Campus Orientation Walk</option>
-          <option value="2">3) Port Congestion Workaround</option>
-          <option value="3">4) Study Group Scheduler</option>
-          <option value="4">5) Typhoon Relief Route</option>
-        </select>
-        <span class="muted" id="wpmLabel">WPM: —</span>
+  <div class="wrap">
+    <div class="card stack">
+      <div class="row" style="justify-content:space-between;">
+        <h1>Reading Flow Demo</h1>
+        <span class="pill"><span id="phaseLabel">Idle</span></span>
       </div>
+      <p class="muted">Shows each passage at <strong>120 WPM</strong> (word-by-word), then reveals <strong>3 MCQs</strong> for <strong>15s</strong> each, then moves to the next passage.</p>
+
+      <div class="area" id="displayBox"></div>
+      <div class="bar"><i id="progressFill"></i></div>
+
+      <div class="controls">
+        <button id="startBtn">Start</button>
+        <button class="ghost" id="resetBtn">Reset</button>
+      </div>
+
+      <div id="quizBox" class="hidden">
+        <fieldset>
+          <legend id="qLegend">Question</legend>
+          <div id="qOptions"></div>
+          <p class="muted" id="qTimer">Time left: 15s</p>
+        </fieldset>
+      </div>
+
+      <p class="muted" id="statusLine"></p>
     </div>
-
-    <!-- Running passage UI -->
-    <div class="passage" id="passageBox"></div>
-    <div class="controls">
-      <button type="button" class="primary" id="startBtn">Start</button>
-      <button type="button" class="ghost" id="pauseBtn" disabled>Pause</button>
-      <button type="button" class="ghost" id="resumeBtn" disabled>Resume</button>
-      <button type="button" class="ghost" id="fasterBtn" disabled>Faster</button>
-      <button type="button" class="ghost" id="slowerBtn" disabled>Slower</button>
-    </div>
-
-    <!-- Q1 (MCQ) -->
-    <div class="q">
-      <strong id="q1Text">Q1.</strong>
-      <!-- Values are letter-coded A/B/C to match a lettered Google Form.
-           If your Google Form uses full sentences as options, change the values accordingly. -->
-      <label><input type="radio" name="entry.1411884682" value="A" required> <span id="q1A"></span></label>
-      <label><input type="radio" name="entry.1411884682" value="B"> <span id="q1B"></span></label>
-      <label><input type="radio" name="entry.1411884682" value="C"> <span id="q1C"></span></label>
-    </div>
-
-    <!-- Q2 (short answer, REQUIRED) -->
-    <div class="q">
-      <label id="q2Text">Q2.
-        <input type="text" name="entry.2033948829" required>
-      </label>
-    </div>
-
-    <!-- Q3 (MCQ) -->
-    <div class="q">
-      <strong id="q3Text">Q3.</strong>
-      <!-- TODO: Replace REPLACE_ME_Q3 with your actual Google Form entry ID for the third question -->
-      <label><input type="radio" name="entry.REPLACE_ME_Q3" value="A" required> <span id="q3A"></span></label>
-      <label><input type="radio" name="entry.REPLACE_ME_Q3" value="B"> <span id="q3B"></span></label>
-      <label><input type="radio" name="entry.REPLACE_ME_Q3" value="C"> <span id="q3C"></span></label>
-    </div>
-
-    <!-- Hidden fields going to your Form -->
-    <input type="hidden" name="entry.530768490" id="hiddenFullPassage">  <!-- Full Passage (title + text) -->
-    <input type="hidden" name="entry.93952014"  id="hiddenWpm">         <!-- WPM -->
-
-    <button type="submit" class="primary" id="submitBtn">Submit</button>
-  </form>
-
-  <iframe name="hidden_iframe" id="hidden_iframe" class="hidden"></iframe>
-
-  <div id="thanks" class="hidden">
-    <h2>Thanks! Your response was submitted.</h2>
   </div>
-</div>
 
 <script>
-  // ---------- DATA: 5 passages × 3 questions each ----------
-  const PASSAGES = [
-    {
-      title: "Pre-dawn Delivery Prep (Davao → Surigao)",
-      text: "Before sunrise, a small logistics team in Davao prepares a delivery run to Surigao. The dispatcher checks weather and road advisories, the driver inspects tire pressure and brakes, and a coordinator confirms the client’s drop-off window. They load the lightest boxes last for quick unloading and set a thirty-minute buffer to account for traffic near the highway. By agreeing on an hourly radio check and plotting two alternate routes, the team reduces idle time and keeps the schedule reliable, even when rain starts. Customers don’t see the routine, but they feel it when parcels arrive on time.",
-      q1: {
-        text: "What is the main idea of the passage?",
-        A: "Careful preparation keeps deliveries on schedule.",
-        B: "Rain makes timely delivery impossible.",
-        C: "Clients should always change their drop-off window."
+/** -------- CONFIG -------- */
+const WPM = 120;                       // words per minute
+const WORD_INTERVAL_MS = Math.round(60000 / WPM); // 500ms
+const QUESTION_DURATION_MS = 15000;    // 15 seconds per question
+const AUTO_LOOP = true;                // loop through passages
+
+/** -------- DUMMY DATA -------- */
+const PASSAGES = [
+  {
+    title: "Dummy Passage A",
+    text: "Before sunrise the team reviews their checklist and prepares a simple route plan. Each driver confirms tire pressure tools and radio batteries. The coordinator updates the schedule and notes a brief detour around the busy downtown roads. By spacing the heaviest boxes near the door they reduce unloading time. When the first checkpoint opens the group starts calmly and keeps steady progress without rushing.",
+    questions: [
+      {
+        text: "What is the main activity described?",
+        options: [
+          "Preparing and organizing a delivery plan.",
+          "Fixing a flat tire on the highway.",
+          "Training new drivers for a race."
+        ]
       },
-      q2: { text: "Name one action the team takes to reduce delays." },
-      q3: {
-        text: "Which step speeds up unloading?",
-        A: "Loading the lightest boxes last.",
-        B: "Skipping brake inspections.",
-        C: "Avoiding radio checks."
-      }
-    },
-    {
-      title: "Campus Orientation Walk",
-      text: "Before classes officially begin, volunteers guide freshmen along a short campus walk. They point out key offices, quiet study areas, and the clinic, reminding students to keep emergency numbers saved. Schedules are checked at every stop, and a group chat is formed so latecomers can find the next station. The route ends near the library, where each student confirms they can access the online portal from their phone.",
-      q1: {
-        text: "What is the main goal of the walk?",
-        A: "Help freshmen navigate campus and key services.",
-        B: "Recruit athletes for varsity teams.",
-        C: "Collect attendance for every classroom."
+      {
+        text: "Why place heavy boxes near the door?",
+        options: [
+          "To make unloading faster.",
+          "To protect fragile items.",
+          "To balance fuel usage."
+        ]
       },
-      q2: { text: "Name one location or resource the group highlights." },
-      q3: {
-        text: "Why did they create a group chat?",
-        A: "So latecomers can find the next stop.",
-        B: "To replace the official school email.",
-        C: "To schedule varsity tryouts."
+      {
+        text: "How do they handle downtown congestion?",
+        options: [
+          "They plan a brief detour.",
+          "They cancel the route.",
+          "They wait until evening."
+        ]
       }
-    },
-    {
-      title: "Port Congestion Workaround",
-      text: "A customs broker hears that the main port is congested and hours-long queues are forming at the gate. To avoid delays, the team splits shipments between two smaller terminals and books earlier inspection slots. Drivers are instructed to carry printed copies of permits to speed up checks if the mobile app goes down. Customers are updated with revised ETAs and a promise to notify if road closures worsen.",
-      q1: {
-        text: "What is the team trying to avoid?",
-        A: "Delays caused by port congestion.",
-        B: "Overtime pay for drivers.",
-        C: "Inspectors checking permits."
+    ]
+  },
+  {
+    title: "Dummy Passage B",
+    text: "After lunch the group checks weather alerts and confirms phone contact for all teams. A backup document folder contains printed permits in case the app fails. The radio lead schedules quick status calls every hour to maintain awareness. With clear roles assigned everyone moves in sequence and avoids duplication of work while keeping energy focused.",
+    questions: [
+      {
+        text: "Why keep printed permits?",
+        options: [
+          "To continue if the app fails.",
+          "To decorate the dashboard.",
+          "To avoid carrying ID cards."
+        ]
       },
-      q2: { text: "Mention one tactic used to keep shipments moving." },
-      q3: {
-        text: "Why carry printed permits?",
-        A: "As a backup if the app fails.",
-        B: "To avoid inspections entirely.",
-        C: "To bypass legal requirements."
-      }
-    },
-    {
-      title: "Study Group Scheduler",
-      text: "Four classmates want a consistent review session before exams. They check everyone’s commute time, settle on early evenings, and rotate who leads so preparation is shared. One volunteer maintains a shared folder where notes and practice questions are posted after each meetup. If someone can’t attend, they message the group and watch a short screen recording later to catch up.",
-      q1: {
-        text: "How does the group stay consistent?",
-        A: "By setting a fixed time and rotating roles.",
-        B: "By cramming the night before exams.",
-        C: "By cancelling if one member is absent."
+      {
+        text: "What keeps the team aligned?",
+        options: [
+          "Hourly status calls on radio.",
+          "Skipping all check-ins.",
+          "Random role switching."
+        ]
       },
-      q2: { text: "Name one way the group shares materials or updates." },
-      q3: {
-        text: "Why rotate leadership?",
-        A: "So preparation work is shared.",
-        B: "To avoid studying altogether.",
-        C: "To replace the shared folder."
+      {
+        text: "What is assigned clearly?",
+        options: [
+          "Team roles.",
+          "Parking tickets.",
+          "Lunch coupons."
+        ]
       }
-    },
-    {
-      title: "Typhoon Relief Route",
-      text: "After strong winds cut power in nearby barangays, a relief team plans delivery of water and food. They prioritize routes by accessibility and need, assign a licensed driver to the heaviest vehicle, and maintain a check-in schedule on radio. Volunteers keep receipts for fuel and supplies, while a coordinator calls barangay captains to confirm drop-off windows and safe staging areas.",
-      q1: {
-        text: "What is the team’s objective?",
-        A: "Deliver relief goods efficiently and safely.",
-        B: "Organize a festival in the barangay plaza.",
-        C: "Survey students about club interests."
-      },
-      q2: { text: "State one measure they use to keep operations accountable or safe." },
-      q3: {
-        text: "Why assign a licensed driver to the heaviest vehicle?",
-        A: "To ensure safe handling of a heavy load.",
-        B: "To practice for a racing event.",
-        C: "To reduce the number of radios needed."
+    ]
+  }
+];
+
+/** -------- STATE -------- */
+let passageIndex = 0;
+let wordIndex = 0;
+let words = [];
+let readingTimer = null;
+let quizTimer = null;
+let quizRemaining = QUESTION_DURATION_MS;
+let currentQuestionIndex = 0;
+
+/** -------- EL REFS -------- */
+const displayBox = document.getElementById('displayBox');
+const phaseLabel = document.getElementById('phaseLabel');
+const progressFill = document.getElementById('progressFill');
+const startBtn = document.getElementById('startBtn');
+const resetBtn = document.getElementById('resetBtn');
+const quizBox = document.getElementById('quizBox');
+const qLegend = document.getElementById('qLegend');
+const qOptions = document.getElementById('qOptions');
+const qTimer = document.getElementById('qTimer');
+const statusLine = document.getElementById('statusLine');
+
+/** -------- HELPERS -------- */
+function setPhase(text) { phaseLabel.textContent = text; }
+function clearTimers() {
+  if (readingTimer) { clearInterval(readingTimer); readingTimer = null; }
+  if (quizTimer) { clearInterval(quizTimer); quizTimer = null; }
+}
+function resetUI() {
+  clearTimers();
+  displayBox.textContent = "";
+  quizBox.classList.add('hidden');
+  qOptions.innerHTML = "";
+  qLegend.textContent = "Question";
+  qTimer.textContent = "Time left: 15s";
+  progressFill.style.width = "0%";
+  statusLine.textContent = "";
+  setPhase("Idle");
+}
+function nextPassageIndex() {
+  if (AUTO_LOOP) return (passageIndex + 1) % PASSAGES.length;
+  return Math.min(passageIndex + 1, PASSAGES.length - 1);
+}
+function renderWord() {
+  if (wordIndex >= words.length) {
+    clearInterval(readingTimer);
+    readingTimer = null;
+    progressFill.style.width = "100%";
+    startQuizPhase();
+    return;
+  }
+  const word = words[wordIndex++];
+  displayBox.textContent += (wordIndex === 1 ? "" : " ") + word;
+  progressFill.style.width = `${Math.min(100, Math.round((wordIndex / words.length) * 100))}%`;
+}
+function startReadingPhase() {
+  const p = PASSAGES[passageIndex];
+  setPhase("Reading");
+  statusLine.textContent = `${p.title} • ${WPM} WPM`;
+  displayBox.textContent = "";
+  words = p.text.trim().split(/\s+/);
+  wordIndex = 0;
+  quizBox.classList.add('hidden');
+  readingTimer = setInterval(renderWord, WORD_INTERVAL_MS);
+}
+function startQuizPhase() {
+  const p = PASSAGES[passageIndex];
+  setPhase("MCQ");
+  quizBox.classList.remove('hidden');
+  displayBox.textContent = ""; // hide passage while quizzing
+  progressFill.style.width = "0%";
+  currentQuestionIndex = 0;
+  showQuestion(p.questions[currentQuestionIndex]);
+  startQuestionTimer();
+}
+function showQuestion(q) {
+  qLegend.textContent = `Q${currentQuestionIndex + 1}. ${q.text}`;
+  qOptions.innerHTML = q.options.map((opt, i) => `
+    <label><input type="radio" name="q${currentQuestionIndex}" value="${opt.replace(/"/g,'&quot;')}"> ${opt}</label>
+  `).join("");
+  quizRemaining = QUESTION_DURATION_MS;
+  updateQuestionTimer();
+}
+function updateQuestionTimer() {
+  const secs = Math.ceil(quizRemaining / 1000);
+  qTimer.textContent = `Time left: ${secs}s`;
+  const pct = Math.max(0, Math.min(100, Math.round((1 - (quizRemaining / QUESTION_DURATION_MS)) * 100)));
+  progressFill.style.width = `${pct}%`;
+}
+function startQuestionTimer() {
+  if (quizTimer) clearInterval(quizTimer);
+  quizTimer = setInterval(() => {
+    quizRemaining -= 200; // smooth countdown
+    if (quizRemaining <= 0) {
+      // move to next question or next passage
+      clearInterval(quizTimer);
+      quizTimer = null;
+      const p = PASSAGES[passageIndex];
+      if (currentQuestionIndex < p.questions.length - 1) {
+        currentQuestionIndex++;
+        showQuestion(p.questions[currentQuestionIndex]);
+        startQuestionTimer();
+      } else {
+        // MCQ done -> next passage
+        passageIndex = nextPassageIndex();
+        startReadingPhase();
       }
+    } else {
+      updateQuestionTimer();
     }
-  ];
+  }, 200);
+}
 
-  // ---------- UI/STATE ----------
-  const box = document.getElementById('passageBox');
-  const hf = document.getElementById('hidden_iframe');
-  const hiddenFullPassage = document.getElementById('hiddenFullPassage');
-  const hiddenWpm = document.getElementById('hiddenWpm');
+/** -------- EVENTS -------- */
+startBtn.addEventListener('click', () => {
+  clearTimers();
+  startReadingPhase();
+});
+resetBtn.addEventListener('click', () => {
+  passageIndex = 0;
+  resetUI();
+});
 
-  const startBtn = document.getElementById('startBtn');
-  const pauseBtn = document.getElementById('pauseBtn');
-  const resumeBtn = document.getElementById('resumeBtn');
-  const fasterBtn = document.getElementById('fasterBtn');
-  const slowerBtn = document.getElementById('slowerBtn');
-  const passagePicker = document.getElementById('passagePicker');
-  const wpmLabel = document.getElementById('wpmLabel');
-
-  const q1Text = document.getElementById('q1Text');
-  const q1A = document.getElementById('q1A');
-  const q1B = document.getElementById('q1B');
-  const q1C = document.getElementById('q1C');
-
-  const q2Text = document.getElementById('q2Text');
-
-  const q3Text = document.getElementById('q3Text');
-  const q3A = document.getElementById('q3A');
-  const q3B = document.getElementById('q3B');
-  const q3C = document.getElementById('q3C');
-
-  const form = document.getElementById('gform');
-  const thanks = document.getElementById('thanks');
-
-  const initialDelayMs = 200; // lower = faster
-  let words = [];
-  let i = 0, timer = null, delay = initialDelayMs, startedAt = null, pausedAt = null, totalPaused = 0;
-  let submitted = false, iframeLoadedOnce = false;
-
-  // Helpers
-  function loadPassage(idx) {
-    const P = PASSAGES[idx];
-    // Reset render
-    if (timer) { clearInterval(timer); timer = null; }
-    box.textContent = '';
-    i = 0; totalPaused = 0; pausedAt = null; startedAt = null;
-    pauseBtn.disabled = true; resumeBtn.disabled = true; fasterBtn.disabled = true; slowerBtn.disabled = true;
-    wpmLabel.textContent = 'WPM: —';
-
-    // Update questions
-    q1Text.textContent = "Q1. " + P.q1.text;
-    q1A.textContent = P.q1.A;
-    q1B.textContent = P.q1.B;
-    q1C.textContent = P.q1.C;
-
-    q2Text.childNodes[0].textContent = "Q2. " + P.q2.text + " ";
-
-    q3Text.textContent = "Q3. " + P.q3.text;
-    q3A.textContent = P.q3.A;
-    q3B.textContent = P.q3.B;
-    q3C.textContent = P.q3.C;
-
-    // Prepare passage text and store full content into hidden field (title + text)
-    const full = P.title + "\\n\\n" + P.text;
-    hiddenFullPassage.value = full;
-    words = P.text.trim().split(/\\s+/);
-  }
-
-  function renderNext() {
-    if (i >= words.length) { stop(); return; }
-    box.textContent += (i === 0 ? '' : ' ') + words[i++];
-  }
-
-  function start() {
-    if (timer) return;
-    if (!words.length) loadPassage(Number(passagePicker.value));
-    box.textContent = '';
-    i = 0; totalPaused = 0; pausedAt = null;
-    startedAt = performance.now();
-    enableControls(true);
-    timer = setInterval(renderNext, delay);
-  }
-
-  function pause() {
-    if (!timer) return;
-    clearInterval(timer); timer = null;
-    pausedAt = performance.now();
-    pauseBtn.disabled = true; resumeBtn.disabled = false;
-  }
-
-  function resume() {
-    if (timer || pausedAt == null) return;
-    totalPaused += performance.now() - pausedAt;
-    pausedAt = null;
-    timer = setInterval(renderNext, delay);
-    pauseBtn.disabled = false; resumeBtn.disabled = true;
-  }
-
-  function stop() {
-    if (timer) { clearInterval(timer); timer = null; }
-    if (!startedAt) return;
-    const elapsed = performance.now() - startedAt - totalPaused; // ms
-    const minutes = elapsed / 60000;
-    const wpm = Math.round(words.length / Math.max(minutes, 1e-6));
-    hiddenWpm.value = wpm;
-    wpmLabel.textContent = 'WPM: ' + wpm;
-  }
-
-  function faster() { delay = Math.max(50, delay - 50); restartIfRunning(); }
-  function slower() { delay = delay + 50; restartIfRunning(); }
-
-  function restartIfRunning() {
-    if (!timer) return;
-    clearInterval(timer);
-    timer = setInterval(renderNext, delay);
-  }
-
-  function enableControls(active) {
-    pauseBtn.disabled = !active;
-    fasterBtn.disabled = !active;
-    slowerBtn.disabled = !active;
-    resumeBtn.disabled = true;
-  }
-
-  // Events
-  document.addEventListener('DOMContentLoaded', () => loadPassage(0));
-  passagePicker.addEventListener('change', (e) => loadPassage(Number(e.target.value)));
-  startBtn.onclick = start;
-  pauseBtn.onclick = pause;
-  resumeBtn.onclick = resume;
-  fasterBtn.onclick = faster;
-  slowerBtn.onclick = slower;
-
-  form.addEventListener('submit', () => {
-    // ensure stats captured even if user submits early/late
-    stop();
-    submitted = true;
-  });
-
-  hf.addEventListener('load', () => {
-    if (!iframeLoadedOnce) { iframeLoadedOnce = true; return; } // ignore initial blank load
-    if (submitted) {
-      form.classList.add('hidden');
-      thanks.classList.remove('hidden');
-    }
-  });
+/** -------- INIT -------- */
+resetUI();
 </script>
 </body>
 </html>
-"""
-
-readme = """# Reading Quiz – 5 Passages × 3 Questions (Static → Google Forms)
-This version supports **5 passages** with **3 questions each** and submits to Google Forms using `entry.<id>` field names. It runs on **GitHub Pages** (no backend).
-
-## Field mapping (current)
-- **Form ID**: `1FAIpQLSeXCehLwgo4nSHty_IQEPay9UUZ-nMBZ_TDIFP-CTTLJLgibw`
-- **Student Name** → `entry.257251326`
-- **Q1 (Multiple choice)** → `entry.1411884682` (values are letter-coded A/B/C)
-- **Q2 (Short answer)** → `entry.2033948829`
-- **Q3 (Multiple choice)** → `entry.REPLACE_ME_Q3` ← **Replace with your actual ID**
-- **Full Passage (title + text)** → `entry.530768490` (hidden)
-- **WPM** → `entry.93952014` (hidden)
-
-> ⚠️ **MCQ values must match your Google Form options.** This page sends **A/B/C** for Q1 and Q3. Configure those questions in your Google Form with lettered options (`A`, `B`, `C`). If your form uses full-sentence options, change the `value="A|B|C"` in `index.html` to the exact option text instead.
-
-## How to get the missing Q3 field ID
-In the Google Form editor:
-1. Add the 3rd question (Multiple choice).
-2. Click **⋮ → Get pre-filled link**.
-3. Enter sample answers for all fields including Q3.
-4. Click **Get link** and copy the URL.
-5. Find the piece like `entry.XXXXXXXXXX=...` for Q3 and update `name="entry.REPLACE_ME_Q3"` in `index.html`.
-
-## Deploy on GitHub Pages
-1. Create a public repo and upload `index.html` (this file).
-2. Repo **Settings → Pages** → **Source**: Deploy from a branch → `main / (root)` → **Save**.
-3. Open the Pages URL and test a submission.
-
-## Edit the content
-All five passages and their questions live in the `PASSAGES` array in `index.html`. Each has:
-```js
-{
-  title: "Title",
-  text: "Full passage text...",
-  q1: { text: "Q1 text", A: "Option A", B: "Option B", C: "Option C" },
-  q2: { text: "Q2 short answer prompt" },
-  q3: { text: "Q3 text", A: "Option A", B: "Option B", C: "Option C" }
-}
