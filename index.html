@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Reading Quiz (Static → Google Forms)</title>
+<style>
+  body { font: 16px/1.45 system-ui, Arial, sans-serif; margin: 24px; }
+  .card { max-width: 760px; margin: 0 auto; padding: 20px; border: 1px solid #e5e7eb; border-radius: 12px; }
+  .passage { min-height: 120px; padding: 16px; background: #f8fafc; border-radius: 8px; }
+  .controls { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+  button { padding: 8px 14px; border: 0; border-radius: 8px; cursor: pointer; }
+  .primary { background: #1a73e8; color: #fff; }
+  .ghost { background: #e5e7eb; }
+  .hidden { display: none; }
+  .q { margin: 16px 0; }
+  label { display:block; margin: 6px 0; }
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>Reading Quiz</h1>
+
+  <!-- Google Form POST (static) -->
+  <form id="gform"
+        action="https://docs.google.com/forms/d/e/1FAIpQLSeXCehLwgo4nSHty_IQEPay9UUZ-nMBZ_TDIFP-CTTLJLgibw/formResponse"
+        method="POST"
+        target="hidden_iframe">
+
+    <!-- Student Name (REQUIRED) -->
+    <div class="q">
+      <label>Student Name
+        <input type="text" name="entry.REPLACE_ME_STUDENT_NAME" required>
+      </label>
+    </div>
+
+    <!-- Running passage UI -->
+    <div class="passage" id="passageBox"></div>
+    <div class="controls">
+      <button type="button" class="primary" id="startBtn">Start</button>
+      <button type="button" class="ghost" id="pauseBtn" disabled>Pause</button>
+      <button type="button" class="ghost" id="resumeBtn" disabled>Resume</button>
+      <button type="button" class="ghost" id="fasterBtn" disabled>Faster</button>
+      <button type="button" class="ghost" id="slowerBtn" disabled>Slower</button>
+    </div>
+
+    <!-- Q1 (MCQ) -->
+    <div class="q">
+      <strong>Q1. What is the main idea of the passage?</strong>
+      <label><input type="radio" name="entry.2033948829" value="Careful preparation helps deliveries stay on schedule." required> Careful preparation helps deliveries stay on schedule.</label>
+      <label><input type="radio" name="entry.2033948829" value="Rain makes deliveries impossible."> Rain makes deliveries impossible.</label>
+      <label><input type="radio" name="entry.2033948829" value="Clients should always adjust their schedules."> Clients should always adjust their schedules.</label>
+    </div>
+
+    <!-- Q2 (short answer, REQUIRED) -->
+    <div class="q">
+      <label>Q2. Name one specific step the team takes to reduce delays.
+        <input type="text" name="entry.REPLACE_ME_Q2" required>
+      </label>
+    </div>
+
+    <!-- Hidden telemetry going to your Form -->
+    <input type="hidden" name="entry.530768490" id="hiddenFullPassage">  <!-- Full Passage -->
+    <input type="hidden" name="entry.REPLACE_ME_READING_MS" id="hiddenReadingMs">  <!-- Reading Time (ms) -->
+    <input type="hidden" name="entry.93952014" id="hiddenWpm">           <!-- WPM -->
+
+    <button type="submit" class="primary" id="submitBtn">Submit</button>
+  </form>
+
+  <iframe name="hidden_iframe" id="hidden_iframe" class="hidden"></iframe>
+
+  <div id="thanks" class="hidden">
+    <h2>Thanks! Your response was submitted.</h2>
+  </div>
+</div>
+
+<script>
+  // -------- PASSAGE (you can swap this anytime) --------
+  const passage =
+`Before sunrise, a small logistics team in Davao prepares a delivery run to Surigao. The dispatcher checks weather and road advisories, the driver inspects tire pressure and brakes, and a coordinator confirms the client’s drop-off window. They load the lightest boxes last for quick unloading and set a thirty-minute buffer to account for traffic near the highway. By agreeing on an hourly radio check and plotting two alternate routes, the team reduces idle time and keeps the schedule reliable, even when rain starts. Customers don’t see the routine, but they feel it when parcels arrive on time.`;
+
+  const initialDelayMs = 200; // lower = faster
+
+  // -------- STATE --------
+  const box = document.getElementById('passageBox');
+  const hf = document.getElementById('hidden_iframe');
+  const hiddenFullPassage = document.getElementById('hiddenFullPassage');
+  const hiddenReadingMs = document.getElementById('hiddenReadingMs');
+  const hiddenWpm = document.getElementById('hiddenWpm');
+
+  const startBtn = document.getElementById('startBtn');
+  const pauseBtn = document.getElementById('pauseBtn');
+  const resumeBtn = document.getElementById('resumeBtn');
+  const fasterBtn = document.getElementById('fasterBtn');
+  const slowerBtn = document.getElementById('slowerBtn');
+  const submitBtn = document.getElementById('submitBtn');
+  const thanks = document.getElementById('thanks');
+  const form = document.getElementById('gform');
+
+  const words = passage.trim().split(/\s+/);
+  let i = 0, timer = null, delay = initialDelayMs, startedAt = null, pausedAt = null, totalPaused = 0;
+  let submitted = false, iframeLoadedOnce = false;
+
+  // Store full passage in a hidden field
+  hiddenFullPassage.value = passage;
+
+  function renderNext() {
+    if (i >= words.length) { stop(); return; }
+    box.textContent += (i === 0 ? '' : ' ') + words[i++];
+  }
+
+  function start() {
+    if (timer) return;
+    box.textContent = '';
+    i = 0; totalPaused = 0; pausedAt = null;
+    startedAt = performance.now();
+    enableControls(true);
+    timer = setInterval(renderNext, delay);
+  }
+
+  function pause() {
+    if (!timer) return;
+    clearInterval(timer); timer = null;
+    pausedAt = performance.now();
+    pauseBtn.disabled = true; resumeBtn.disabled = false;
+  }
+
+  function resume() {
+    if (timer || pausedAt == null) return;
+    totalPaused += performance.now() - pausedAt;
+    pausedAt = null;
+    timer = setInterval(renderNext, delay);
+    pauseBtn.disabled = false; resumeBtn.disabled = true;
+  }
+
+  function stop() {
+    if (timer) { clearInterval(timer); timer = null; }
+    if (!startedAt) return;
+    const elapsed = performance.now() - startedAt - totalPaused; // ms
+    const minutes = elapsed / 60000;
+    const wpm = Math.round(words.length / Math.max(minutes, 1e-6));
+    hiddenReadingMs.value = Math.round(elapsed);
+    hiddenWpm.value = wpm;
+  }
+
+  function faster() { delay = Math.max(50, delay - 50); restartIfRunning(); }
+  function slower() { delay = delay + 50; restartIfRunning(); }
+
+  function restartIfRunning() {
+    if (!timer) return;
+    clearInterval(timer);
+    timer = setInterval(renderNext, delay);
+  }
+
+  function enableControls(active) {
+    pauseBtn.disabled = !active;
+    fasterBtn.disabled = !active;
+    slowerBtn.disabled = !active;
+    resumeBtn.disabled = true;
+  }
+
+  // Events
+  startBtn.onclick = start;
+  pauseBtn.onclick = pause;
+  resumeBtn.onclick = resume;
+  fasterBtn.onclick = faster;
+  slowerBtn.onclick = slower;
+
+  form.addEventListener('submit', () => {
+    // ensure stats captured even if they submit early/late
+    stop();
+    submitted = true;
+  });
+
+  // Show "Thanks" after Google responds in the iframe
+  hf.addEventListener('load', () => {
+    if (!iframeLoadedOnce) { iframeLoadedOnce = true; return; } // ignore initial blank load
+    if (submitted) {
+      form.classList.add('hidden');
+      thanks.classList.remove('hidden');
+    }
+  });
+</script>
+</body>
+</html>
